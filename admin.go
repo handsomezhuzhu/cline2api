@@ -805,7 +805,9 @@ func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Reset status to active and refresh token, but preserve usage/token statistics.
+		poolMu.Lock()
 		acc.Status = "active"
+		poolMu.Unlock()
 		if err := refreshAccountToken(acc); err != nil {
 			writeAPI(w, http.StatusInternalServerError, apiResponse{Error: tAPI(r, "reset_failed", err.Error())})
 			return

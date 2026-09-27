@@ -88,11 +88,49 @@ func loadPool() *AccountPool {
 	return pool
 }
 
-func savePool() {
+// savePoolLocked 在已持有 poolMu 的前提下序列化账号池并写盘。
+func savePoolLocked() {
 	data, _ := json.MarshalIndent(pool, "", "  ")
 	if err := os.WriteFile(poolPath, data, 0600); err != nil {
 		log.Printf("Failed to save accounts: %v", err)
 	}
+}
+
+// savePool 加锁序列化账号池并写盘（必须在未持有 poolMu 时调用）。
+// json.Marshal 会遍历账号池内嵌 map（ModelCooldowns / ModelStats），
+// 必须与其他 goroutine 的 map 写入互斥，否则触发
+// fatal error: concurrent map iteration and map write（进程直接崩溃）。
+// 已持锁的调用方应改用 savePoolLocked，避免死锁。
+func savePool() {
+	poolMu.Lock()
+	defer poolMu.Unlock()
+	savePoolLocked()
+}
+
+// markAccountStatus 在锁内更新账号状态并落盘（不改动 CooldownUntil）。
+func markAccountStatus(acc *Account, status string) {
+	poolMu.Lock()
+	acc.Status = status
+	savePoolLocked()
+	poolMu.Unlock()
+}
+
+// markAccountCooldown 在锁内标记账号冷却并落盘。
+func markAccountCooldown(acc *Account, until time.Time) {
+	poolMu.Lock()
+	acc.Status = "cooldown"
+	acc.CooldownUntil = until
+	savePoolLocked()
+	poolMu.Unlock()
+}
+
+// touchAccountUsed 在锁内更新最近使用时间与用量计数并落盘。
+func touchAccountUsed(acc *Account) {
+	poolMu.Lock()
+	acc.LastUsed = time.Now()
+	acc.UsageCount++
+	savePoolLocked()
+	poolMu.Unlock()
 }
 
 func addAccount(acc *Account) {
@@ -146,7 +184,7 @@ func removeAccount(accountID string) bool {
 	for i, a := range p.Accounts {
 		if a.AccountID == accountID {
 			p.Accounts = append(p.Accounts[:i], p.Accounts[i+1:]...)
-			savePool()
+			savePoolLocked()
 			return true
 		}
 	}
@@ -169,18 +207,19 @@ func getAccountByID(accountID string) *Account {
 func refreshAccountToken(acc *Account) error {
 	resp, err := refreshClineToken(acc.RefreshToken)
 	if err != nil {
-		acc.Status = "expired"
-		savePool()
+		markAccountStatus(acc, "expired")
 		return fmt.Errorf("token refresh failed: %w", err)
 	}
 
+	poolMu.Lock()
 	acc.AccessToken = "workos:" + resp.Data.AccessToken
 	if resp.Data.RefreshToken != "" {
 		acc.RefreshToken = resp.Data.RefreshToken
 	}
 	acc.ExpiresAt = parseExpiry(resp.Data.ExpiresAt) - 60000
 	acc.Status = "active"
-	savePool()
+	savePoolLocked()
+	poolMu.Unlock()
 	return nil
 }
 
@@ -255,7 +294,7 @@ func pickAccountForModelWithFallback(model string, fallbackToActive bool) *Accou
 		acc = eligible[p.CurrentIdx]
 		p.CurrentIdx = (p.CurrentIdx + 1) % len(eligible)
 	}
-	savePool()
+	savePoolLocked()
 	return acc
 }
 
@@ -296,7 +335,7 @@ func pickAccountForModelLeastUsed(model string) *Account {
 	if best == nil {
 		return nil
 	}
-	savePool()
+	savePoolLocked()
 	return best
 }
 
@@ -356,7 +395,7 @@ func sortModelsByAvailability(chain []string) []string {
 	for i, c := range cs {
 		out[i] = c.model
 	}
-	savePool()
+	savePoolLocked()
 	return out
 }
 
@@ -386,7 +425,7 @@ func pickAccountLocked(p *AccountPool) *Account {
 		acc = active[p.CurrentIdx]
 		p.CurrentIdx = (p.CurrentIdx + 1) % len(active)
 	}
-	savePool()
+	savePoolLocked()
 	return acc
 }
 
