@@ -93,10 +93,13 @@ type modelMeta struct {
 // 会被直接 400 invalid argument（2026-09 实测，含 google 路由的同源报错）。
 var clineModelMeta = map[string]modelMeta{
 	"gemini-3.8-flash": {Context: 1048576, Output: 65536},
+	// vmc 隐藏模型（上游推荐接口不下发，实测可通但元数据未知）：
+	// 走同源网关，保守按 vertex 上限封顶，避免默认 128000 触发 400 降级。
+	"qwen3p8-max-contributor-fallbacks": {Context: 0, Output: 65536},
 }
 
 // clineModelPrefixes 是 Cline 侧模型 ID 的路由前缀（基名之前的限定段）。
-var clineModelPrefixes = []string{"cline-free/", "cline-pass/", "google/", "cline/"}
+var clineModelPrefixes = []string{"cline-free/", "cline-pass/", "google/", "cline/", "vmc/"}
 
 // modelBaseName 去掉模型 ID 的路由前缀得到基名：
 // cline-free/gemini-3.8-flash / google/gemini-3.8-flash → gemini-3.8-flash。

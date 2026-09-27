@@ -889,11 +889,16 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 		if m != model {
 			pickAcc = pickAccountForModelLeastUsed
 		}
+		tried := map[string]bool{} // 5xx 不产生冷却，轮询会绕回已试账号，靠它终止
 		for {
 			acc := pickAcc(m)
 			if acc == nil {
 				break // 该模型所有账号均冷却/不可用 → 尝试链上下一个模型
 			}
+			if tried[acc.AccountID] {
+				break
+			}
+			tried[acc.AccountID] = true
 			resp, usedAcc, err := callClineAPIWithAccount(acc, withModel(params, m), stream)
 			if err == nil {
 				if m != model {
@@ -908,6 +913,11 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 			}
 			apiErr, ok := err.(*clineAPIError)
 			if !ok || apiErr.statusCode != http.StatusTooManyRequests {
+				// 5xx 多为上游瞬时故障（如 empty response content）：换账号重试同模型，
+				// 而不是一次抖动就降级换模型。
+				if ok && apiErr.statusCode >= 500 {
+					continue
+				}
 				// 非 429 错误：若后面还有候选（provider / 链）则继续降级，否则透传
 				if !hasAnyFallbackLeft(model, m) {
 					return nil, usedAcc, err
@@ -1159,7 +1169,7 @@ func callClineAPIWithAccount(acc *Account, params map[string]any, stream bool) (
 		// 429：模型级冷却 —— 只暂停该模型，账号保持可用，其他模型继续转发
 		if resp.StatusCode == 429 {
 			model, _ := body["model"].(string)
-			until := parseCooldownUntil(bodyStr)
+			until := parseCooldownUntil(resp.Header.Get("Retry-After"), bodyStr)
 			if model != "" {
 				setModelCooldown(acc, model, until)
 			} else {
@@ -1187,11 +1197,16 @@ type accountTestResult struct {
 	Error        string `json:"error,omitempty"`
 }
 
-// parseCooldownUntil 从 429 响应体中解析 "Try again in 1h 1m" 格式的等待时长，
-// 返回预计恢复时间；解析失败则回退到 1 小时后。
+// parseCooldownUntil 计算 429 冷却截止：优先 Retry-After 响应头，其次解析
+// body 中 "Try again in 1h 1m" 格式的等待时长；都解析失败兜底 5 分钟
+// （原为 1 小时：格式不匹配时一次限流就把模型在账号池封死一小时，
+// 实际 Cline 限流通常是分钟级，且 modelCooldownActive 过期即自动恢复）。
 var cooldownRe = regexp.MustCompile(`(?i)try\s+again\s+in\s+(\d+)\s*h?(?:\s*(\d+))?\s*m?`)
 
-func parseCooldownUntil(body string) time.Time {
+func parseCooldownUntil(retryAfter, body string) time.Time {
+	if ra := parseRetryAfter(retryAfter); ra > 0 {
+		return time.Now().Add(ra)
+	}
 	matches := cooldownRe.FindStringSubmatch(body)
 	if len(matches) >= 2 {
 		hours, _ := strconv.Atoi(matches[1])
@@ -1203,8 +1218,8 @@ func parseCooldownUntil(body string) time.Time {
 			return time.Now().Add(time.Duration(hours)*time.Hour + time.Duration(minutes)*time.Minute)
 		}
 	}
-	// 解析失败，回退 1 小时
-	return time.Now().Add(1 * time.Hour)
+	// 解析失败，回退 5 分钟
+	return time.Now().Add(5 * time.Minute)
 }
 
 // startCooldownRecovery 启动后台 goroutine，每 30 秒检查一次 cooldown 账号，
