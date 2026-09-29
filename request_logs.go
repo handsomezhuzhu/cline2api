@@ -34,7 +34,9 @@ type RequestLog struct {
 	CachedTokens int64  `json:"cachedTokens"`
 	TotalTokens  int64  `json:"totalTokens"`
 	UsageAvailable bool `json:"usageAvailable"`
-	DurationMs   int64     `json:"durationMs"`
+	// CostUsd 该请求的 credit 消耗（美元，取自上游响应 usage.cost；0 = 免费模型或未取到）
+	CostUsd    float64    `json:"costUsd"`
+	DurationMs int64     `json:"durationMs"`
 	TTFTMs       int64     `json:"ttftMs"`
 	OutputTPS    float64   `json:"outputTokensPerSecond"`
 	Completed    bool      `json:"completed"`

@@ -341,13 +341,16 @@ const costTailBytes = 64 * 1024
 
 // costCaptureReader 包装上游响应体：边转发边保留尾部字节，读取结束（EOF 或
 // 提前 Close）时解析 usage.cost 并通过 onCost 回调上报（只上报一次）。
+// 解析结果同时留在 cost/hasCost 上，供请求日志在 finalize 前取用。
 type costCaptureReader struct {
 	src    io.ReadCloser
 	onCost func(costUsd float64)
 
-	tail   []byte // 最近 costTailBytes 字节
-	once   sync.Once
-	closed bool
+	tail    []byte // 最近 costTailBytes 字节
+	once    sync.Once
+	mu      sync.Mutex
+	cost    float64
+	hasCost bool
 }
 
 func newCostCaptureReader(src io.ReadCloser, onCost func(float64)) *costCaptureReader {
@@ -361,6 +364,11 @@ func (r *costCaptureReader) Read(p []byte) (int, error) {
 		if len(r.tail) > costTailBytes {
 			r.tail = r.tail[len(r.tail)-costTailBytes:]
 		}
+		// 增量解析：usage 位于流式最后一个 chunk，到达即取消耗，不等 EOF ——
+		// Anthropic 路径在 [DONE] 后就 finalize 日志，上游可能仍保持连接。
+		if bytes.Contains(r.tail, []byte(`"usage"`)) {
+			r.setCost(extractUsageCost(r.tail))
+		}
 	}
 	if err == io.EOF {
 		r.flush()
@@ -373,13 +381,45 @@ func (r *costCaptureReader) Close() error {
 	return r.src.Close()
 }
 
-// flush 解析尾部并上报消耗；sync.Once 保证 EOF/Close 只触发一次。
+// capturedCost 返回解析到的消耗（美元）；未解析到返回 false。
+func (r *costCaptureReader) capturedCost() (float64, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cost, r.hasCost
+}
+
+// setCost 记录首个解析成功的消耗并触发回调（只生效一次）。
+func (r *costCaptureReader) setCost(cost float64, ok bool) {
+	if !ok {
+		return
+	}
+	r.mu.Lock()
+	if r.hasCost {
+		r.mu.Unlock()
+		return
+	}
+	r.cost, r.hasCost = cost, true
+	r.mu.Unlock()
+	r.onCost(cost)
+}
+
+// flush 读取结束时的兜底解析；sync.Once 保证 EOF/Close 只触发一次。
 func (r *costCaptureReader) flush() {
 	r.once.Do(func() {
-		if cost, ok := extractUsageCost(r.tail); ok {
-			r.onCost(cost)
-		}
+		r.setCost(extractUsageCost(r.tail))
 	})
+}
+
+// capturedResponseCost 从上游响应取回路由期间捕获的消耗（美元）。
+// 响应体未被 costCaptureReader 包装（如测试路径）时返回 false。
+func capturedResponseCost(resp *http.Response) (float64, bool) {
+	if resp == nil {
+		return 0, false
+	}
+	if cr, ok := resp.Body.(*costCaptureReader); ok {
+		return cr.capturedCost()
+	}
+	return 0, false
 }
 
 // extractUsageCost 从响应体尾部解析最后一个 usage 对象里的 cost 字段。

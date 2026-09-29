@@ -133,7 +133,7 @@ tbody tr:hover{background:var(--surface2)}
 .log-table th:nth-child(3),.log-table td:nth-child(3){width:7%}
 .log-table th:nth-child(4),.log-table td:nth-child(4){width:15%}
 .log-table th:nth-child(5),.log-table td:nth-child(5),.log-table th:nth-child(6),.log-table td:nth-child(6),.log-table th:nth-child(7),.log-table td:nth-child(7),.log-table th:nth-child(8),.log-table td:nth-child(8){width:6%;text-align:right;font-variant-numeric:tabular-nums}
-.log-table th:nth-child(9),.log-table td:nth-child(9),.log-table th:nth-child(10),.log-table td:nth-child(10),.log-table th:nth-child(11),.log-table td:nth-child(11){width:6%;text-align:right;font-variant-numeric:tabular-nums}
+.log-table th:nth-child(9),.log-table td:nth-child(9),.log-table th:nth-child(10),.log-table td:nth-child(10),.log-table th:nth-child(11),.log-table td:nth-child(11),.log-table th:nth-child(12),.log-table td:nth-child(12){width:6%;text-align:right;font-variant-numeric:tabular-nums}
 .log-table th:last-child,.log-table td:last-child{width:6%;text-align:right;white-space:nowrap}
 .log-status{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
 .log-status.ok{background:var(--green-soft);color:var(--green)}
@@ -570,7 +570,7 @@ textarea{resize:vertical;min-height:88px;font-family:ui-monospace,'SF Mono','Cas
     <div class="section-body flush">
       <table class="log-table">
         <thead>
-          <tr><th>时间</th><th>账号</th><th>协议</th><th>模型</th><th>输入</th><th>输出</th><th>缓存</th><th>总</th><th>耗时</th><th>TTFT</th><th>tok/s</th><th>状态</th></tr>
+          <tr><th>时间</th><th>账号</th><th>协议</th><th>模型</th><th>输入</th><th>输出</th><th>缓存</th><th>总</th><th>消耗</th><th>耗时</th><th>TTFT</th><th>tok/s</th><th>状态</th></tr>
         </thead>
         <tbody id="logTableBody">
           <tr><td colspan="12" class="empty">加载中...</td></tr>
@@ -1302,6 +1302,7 @@ const I18N = {
   '按模型统计（仅免费模型）': 'Per-model usage (free models)',
   // Cline 账号余额
   '余额': 'Balance',
+  '消耗': 'Cost',
   '刷新余额': 'Refresh Balance',
   '查询余额': 'Fetch balance',
   '尚未查询，点击右侧 💰 查询': 'Not fetched yet — click 💰 on the right to fetch',
@@ -3000,6 +3001,13 @@ const formatDuration = ms => {
   return (ms / 1000).toFixed(1) + 's';
 };
 const formatTPS = v => (!v || v <= 0) ? '-' : v.toFixed(1);
+// 单笔请求的 credit 消耗（美元）：0/缺失 = 免费模型或未采集到
+const formatCost = v => {
+  if (v === null || v === undefined || v <= 0) return '-';
+  if (v < 0.0001) return '<$0.0001';
+  if (v < 1) return '$' + v.toFixed(4);
+  return '$' + v.toFixed(2);
+};
 
 async function loadRequestLogs(reset) {
   if (reset) logCursor = '';
@@ -3016,7 +3024,7 @@ async function loadRequestLogs(reset) {
     const tbody = _('logTableBody');
     const cards = _('logCards');
     if (reset && (!items || items.length === 0)) {
-      tbody.innerHTML = '<tr><td colspan="12" class="empty">' + t('暂无请求日志') + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" class="empty">' + t('暂无请求日志') + '</td></tr>';
       cards.innerHTML = '<div class="empty">' + t('暂无请求日志') + '</div>';
       return;
     }
@@ -3035,6 +3043,7 @@ async function loadRequestLogs(reset) {
         '<td>' + esc(l.protocol || '-') + '</td>' +
         '<td class="mono" style="font-size:11px">' + esc(l.model || '-') + '</td>' +
         '<td>' + tk + '</td>' +
+        '<td class="mono">' + formatCost(l.costUsd) + '</td>' +
         '<td>' + formatDuration(l.durationMs) + '</td>' +
         '<td>' + (l.ttftMs ? formatDuration(l.ttftMs) : '-') + '</td>' +
         '<td>' + formatTPS(l.outputTokensPerSecond) + '</td>' +
@@ -3052,6 +3061,7 @@ async function loadRequestLogs(reset) {
           '<div class="account-metric"><span class="account-metric-label">' + t('协议') + '</span><span class="account-metric-value">' + esc(l.protocol || '-') + '</span></div>' +
           '<div class="account-metric"><span class="account-metric-label">' + t('耗时') + '</span><span class="account-metric-value">' + formatDuration(l.durationMs) + '</span></div>' +
           '<div class="account-metric"><span class="account-metric-label">TTFT</span><span class="account-metric-value">' + (l.ttftMs ? formatDuration(l.ttftMs) : '-') + '</span></div>' +
+          '<div class="account-metric"><span class="account-metric-label">' + t('消耗') + '</span><span class="account-metric-value">' + formatCost(l.costUsd) + '</span></div>' +
           '<div class="account-metric"><span class="account-metric-label">tok/s</span><span class="account-metric-value">' + formatTPS(l.outputTokensPerSecond) + '</span></div>' +
         '</div>' +
         '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">' + tk + '</div>' +

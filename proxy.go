@@ -1803,6 +1803,9 @@ func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *A
 		flusher.Flush()
 	}
 	recordTokenUsage(acc, reqLog.Model, latestUsage)
+	if c, ok := capturedResponseCost(upstream); ok {
+		reqLog.CostUsd = c
+	}
 	finalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
 }
 
@@ -1855,6 +1858,9 @@ func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response, acc
 	out = normalizeOpenAIResponse(out)
 	usage := parseTokenUsage(out["usage"])
 	recordTokenUsage(acc, reqLog.Model, usage)
+	if c, ok := capturedResponseCost(upstream); ok {
+		reqLog.CostUsd = c
+	}
 	finalizeRequestLog(reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 
 	if msg, ok := getNested(out, "choices", 0, "message").(map[string]any); ok {
@@ -2869,6 +2875,9 @@ L:
 				}
 				log.Printf("  anthropic stream broken by upstream error: %s", string(errBody))
 				emit("error", map[string]any{"type": "error", "error": errPayload})
+				if c, ok := capturedResponseCost(upstream); ok {
+					reqLog.CostUsd = c
+				}
 				finalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, false, "upstream error: "+string(errBody))
 				return true
 			}
@@ -3056,6 +3065,9 @@ L:
 		},
 	})
 	recordTokenUsage(acc, reqLog.Model, latestUsage)
+	if c, ok := capturedResponseCost(upstream); ok {
+		reqLog.CostUsd = c
+	}
 	finalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
 
 	emit("message_stop", map[string]any{"type": "message_stop"})
