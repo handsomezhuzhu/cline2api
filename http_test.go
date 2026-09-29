@@ -3,40 +3,59 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
-// TestHTTPTransportUsesHTTPSProxyFromEnvironment 验证全局 transport 的 Proxy 钩子
-// 走 clineOutboundProxy 链路：未配置应用内代理池时回退环境变量代理解析。
-//
-// 不直接依赖 t.Setenv + 真实 http.ProxyFromEnvironment：后者进程级一次性
-// 缓存环境变量，全量测试下其他用例先触发缓存后本用例的 Setenv 即失效，
-// 造成「单跑过、全量挂」的抖动。改为经 clineEnvProxy 接缝注入替身
-// （环境变量读取本身是标准库行为，无需重复测试）。
+const proxyEnvironmentHelper = "CLINE_PROXY_ENV_TEST_HELPER"
+
 func TestHTTPTransportUsesHTTPSProxyFromEnvironment(t *testing.T) {
-	resetClineProxyTestState(t) // 确保应用内代理池未生效，钩子才会回退环境代理
+	if os.Getenv(proxyEnvironmentHelper) == "1" {
+		clineProxyCfgMu.Lock()
+		clineProxyCfg = defaultClineProxyConfig()
+		clineProxyCfgMu.Unlock()
 
-	want, err := url.Parse("http://127.0.0.1:8080")
-	if err != nil {
-		t.Fatalf("parse expected proxy URL: %v", err)
-	}
-	oldEnvProxy := clineEnvProxy
-	clineEnvProxy = func(*http.Request) (*url.URL, error) { return want, nil }
-	t.Cleanup(func() { clineEnvProxy = oldEnvProxy })
+		req, err := http.NewRequest(http.MethodPost, "https://api.workos.com/user_management/authorize/device", nil)
+		if err != nil {
+			t.Fatalf("create request: %v", err)
+		}
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.workos.com/user_management/authorize/device", nil)
-	if err != nil {
-		t.Fatalf("create request: %v", err)
+		proxyURL, err := httpTransport.Proxy(req)
+		if err != nil {
+			t.Fatalf("resolve proxy: %v", err)
+		}
+		if proxyURL == nil {
+			t.Fatal("expected HTTPS_PROXY to be selected")
+		}
+
+		want, err := url.Parse("http://127.0.0.1:8080")
+		if err != nil {
+			t.Fatalf("parse expected proxy URL: %v", err)
+		}
+		if proxyURL.String() != want.String() {
+			t.Fatalf("proxy URL = %q, want %q", proxyURL, want)
+		}
+		return
 	}
 
-	proxyURL, err := httpTransport.Proxy(req)
-	if err != nil {
-		t.Fatalf("resolve proxy: %v", err)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHTTPTransportUsesHTTPSProxyFromEnvironment$", "-test.count=1")
+	env := make([]string, 0, len(os.Environ())+3)
+	for _, entry := range os.Environ() {
+		key := strings.ToUpper(strings.SplitN(entry, "=", 2)[0])
+		switch key {
+		case "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", proxyEnvironmentHelper:
+			continue
+		}
+		env = append(env, entry)
 	}
-	if proxyURL == nil {
-		t.Fatal("expected proxy hook to delegate to environment proxy")
-	}
-	if proxyURL.String() != want.String() {
-		t.Fatalf("proxy URL = %q, want %q", proxyURL, want)
+	cmd.Env = append(env,
+		proxyEnvironmentHelper+"=1",
+		"HTTPS_PROXY=http://127.0.0.1:8080",
+		"NO_PROXY=",
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("isolated proxy environment test failed: %v\n%s", err, output)
 	}
 }
