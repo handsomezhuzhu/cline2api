@@ -467,6 +467,10 @@ func listAccounts() []*Account {
 			TotalTokens:      a.TotalTokens,
 			CachedTokens:     a.CachedTokens,
 			CreatedAt:        a.CreatedAt,
+			CreditBalance:    a.CreditBalance,
+			CreditUserID:     a.CreditUserID,
+			CreditCheckedAt:  a.CreditCheckedAt,
+			CreditError:      a.CreditError,
 		}
 		// 按模型细分统计（脱敏拷贝）
 		if len(a.ModelStats) > 0 {

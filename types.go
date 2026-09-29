@@ -21,6 +21,15 @@ type Account struct {
 	ModelStats map[string]*ModelStat `json:"modelStats,omitempty"`
 	// ModelCooldowns 模型级冷却：modelID → 恢复时间（429 时记录，只暂停该模型）
 	ModelCooldowns map[string]time.Time `json:"modelCooldowns,omitempty"`
+	// Cline Credits 余额（micro-USD，1e-6 美元；Cline UI 按 /1e4 显示为 credits）。
+	// nil = 尚未查询过。负值表示透支。
+	CreditBalance *float64 `json:"creditBalance,omitempty"`
+	// CreditUserID 缓存 /api/v1/users/me 返回的 uid（balance 接口的路径参数）
+	CreditUserID string `json:"creditUserId,omitempty"`
+	// CreditCheckedAt 最近一次成功查询 Credits 的时间
+	CreditCheckedAt time.Time `json:"creditCheckedAt,omitempty"`
+	// CreditError 最近一次查询 Credits 的失败原因（空 = 上次成功）
+	CreditError string `json:"creditError,omitempty"`
 }
 
 type Model struct {

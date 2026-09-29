@@ -69,6 +69,8 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/accounts/add", auth(handleAdminAccountAdd))
 	mux.HandleFunc("/admin/api/accounts/delete", auth(handleAdminAccountDelete))
 	mux.HandleFunc("/admin/api/accounts/export", auth(handleExportAccounts))
+	mux.HandleFunc("/admin/api/accounts/credits", auth(handleAdminAccountCredits))
+	mux.HandleFunc("/admin/api/accounts/credits/refresh", auth(handleAdminCreditRefresh))
 	mux.HandleFunc("/admin/api/oauth/start", auth(handleOAuthStart))
 	mux.HandleFunc("/admin/api/oauth/status", auth(handleOAuthStatus))
 	mux.HandleFunc("/admin/api/sso/import", auth(handleSSOImport))
@@ -282,6 +284,61 @@ func handleAdminAccounts(w http.ResponseWriter, r *http.Request) {
 			"accounts":  accounts,
 			"total":     len(accounts),
 			"poolIndex": loadPool().CurrentIdx,
+		},
+	})
+}
+
+// GET /admin/api/accounts/credits
+// 返回各账号 Credits 缓存快照（不请求上游）+ 后台刷新进度 + 是否需要刷新。
+func handleAdminAccountCredits(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Data: map[string]any{
+			"credits":     listAccountCredits(),
+			"progress":    getCreditRefreshProgress(),
+			"needRefresh": needCreditRefresh(),
+		},
+	})
+}
+
+// POST /admin/api/accounts/credits/refresh  body: { accountId?: "" }
+// accountId 为空 = 刷新全部账号；传了只刷新该账号。后台异步执行，前端轮询进度。
+func handleAdminCreditRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		AccountID string `json:"accountId"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	var ids []string
+	if req.AccountID != "" {
+		if getAccountByID(req.AccountID) == nil {
+			writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "account_not_found")})
+			return
+		}
+		ids = []string{req.AccountID}
+	}
+
+	prog, started := startCreditRefresh(ids, false)
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Data: map[string]any{
+			"started":  started,
+			"progress": prog,
 		},
 	})
 }
