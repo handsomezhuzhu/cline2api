@@ -471,6 +471,9 @@ func listAccounts() []*Account {
 			CreditUserID:     a.CreditUserID,
 			CreditCheckedAt:  a.CreditCheckedAt,
 			CreditError:      a.CreditError,
+			SpentMicroUsd:    a.SpentMicroUsd,
+			SpendCount:       a.SpendCount,
+			LastSpendAt:      a.LastSpendAt,
 		}
 		// 按模型细分统计（脱敏拷贝）
 		if len(a.ModelStats) > 0 {

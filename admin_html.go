@@ -109,16 +109,22 @@ th{color:var(--text2);font-weight:600;font-size:11px;text-transform:uppercase;le
 tbody tr:last-child td{border-bottom:none}
 tbody tr{transition:background 0.15s var(--ease)}
 tbody tr:hover{background:var(--surface2)}
-/* 账号表格列宽：1 勾选 / 2 序号 / 3 邮箱(自适应省略) / 4 状态 / 5-9 数字右对齐 / 10-11 时间不折行 / 12 操作 */
+/* 账号表格列宽：1 勾选 / 2 序号 / 3 邮箱(自适应省略) / 4 状态 / 5-9 数字右对齐 / 10 余额 / 11-12 时间不折行 / 13 操作 */
 .account-table th:nth-child(1),.account-table td:nth-child(1){width:36px;min-width:36px;text-align:center}
 .account-table th:nth-child(2),.account-table td:nth-child(2){width:44px;min-width:44px;color:var(--text3)}
 .account-table td:nth-child(3){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .account-table th:nth-child(4),.account-table td:nth-child(4){width:9%}
 .account-table th:nth-child(5),.account-table td:nth-child(5),.account-table th:nth-child(6),.account-table td:nth-child(6),.account-table th:nth-child(7),.account-table td:nth-child(7),.account-table th:nth-child(8),.account-table td:nth-child(8),.account-table th:nth-child(9),.account-table td:nth-child(9){width:7%;text-align:right;font-variant-numeric:tabular-nums}
-.account-table th:nth-child(10),.account-table td:nth-child(10),.account-table th:nth-child(11),.account-table td:nth-child(11){width:10%;color:var(--text2)}
-.account-table th:last-child,.account-table td:last-child{width:172px;min-width:172px;text-align:right;white-space:nowrap}
+.account-table th:nth-child(10),.account-table td:nth-child(10){width:10%;min-width:86px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.account-table th:nth-child(11),.account-table td:nth-child(11),.account-table th:nth-child(12),.account-table td:nth-child(12){width:10%;color:var(--text2)}
+.account-table th:last-child,.account-table td:last-child{width:196px;min-width:196px;text-align:right;white-space:nowrap}
 .account-table input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
 .account-table td:last-child .btn{width:32px;padding-left:0;padding-right:0;justify-content:center}
+/* 更多下拉菜单 */
+.more-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:148px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:60;overflow:hidden;padding:4px}
+.more-item{padding:8px 12px;border-radius:7px;font-size:13px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.more-item:hover{background:var(--surface2)}
+.more-item.disabled{opacity:.5;cursor:wait}
 .account-email{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500}
 .account-cards{display:none}
 .log-cards{display:none}
@@ -453,7 +459,13 @@ textarea{resize:vertical;min-height:88px;font-family:ui-monospace,'SF Mono','Cas
       <div class="large-subtitle">管理 Cline 账号池中的所有账号</div>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-sm" id="creditRefreshBtn" onclick="refreshAllCredits(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>刷新 Credit</button>
+      <div style="position:relative">
+        <button class="btn btn-sm" onclick="toggleMoreMenu(event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>更多 <span style="font-size:10px">▾</span></button>
+        <div id="moreMenu" class="more-menu" style="display:none">
+          <div class="more-item" id="moreItemCredit" onclick="refreshAllCredits(this)">🔄 <span id="creditMenuLabel">刷新余额</span></div>
+          <div class="more-item" id="moreItemDedup" onclick="dedupAccounts(this)">🧹 <span id="dedupMenuLabel">一键去重</span></div>
+        </div>
+      </div>
       <button class="btn btn-sm" onclick="testAllAccounts(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>测试全部</button>
       <button class="btn btn-sm" onclick="exportSelectedAccounts()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>导出选中<span id="selCount"></span></button>
       <button class="btn btn-sm btn-danger" onclick="deleteSelectedAccounts(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除选中<span id="delCount"></span></button>
@@ -466,7 +478,7 @@ textarea{resize:vertical;min-height:88px;font-family:ui-monospace,'SF Mono','Cas
     <div class="section-body flush">
       <table class="account-table">
         <thead>
-          <tr><th style="width:30px;text-align:center"><input type="checkbox" id="accSelAll" onchange="toggleAllAccountSel(this)" title="全选本页"></th><th style="width:40px">#</th><th>邮箱</th><th>状态</th><th>请求</th><th>输入</th><th>输出</th><th>总 Token</th><th>缓存</th><th>Credit 余额</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
+          <tr><th style="width:30px;text-align:center"><input type="checkbox" id="accSelAll" onchange="toggleAllAccountSel(this)" title="全选本页"></th><th style="width:40px">#</th><th>邮箱</th><th>状态</th><th>请求</th><th>输入</th><th>输出</th><th>总 Token</th><th>缓存</th><th>余额</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
         </thead>
         <tbody id="accountTableBody">
           <tr><td colspan="13" class="empty">加载中...</td></tr>
@@ -1288,16 +1300,26 @@ const I18N = {
   '暂无模型': 'No models',
   '模型统计': 'Model Usage',
   '按模型统计（仅免费模型）': 'Per-model usage (free models)',
-  // Cline Credits
-  'Credit 余额': 'Credit Balance',
-  '刷新 Credit': 'Refresh Credits',
-  '查询 Credit': 'Fetch credits',
+  // Cline 账号余额
+  '余额': 'Balance',
+  '刷新余额': 'Refresh Balance',
+  '查询余额': 'Fetch balance',
   '尚未查询，点击右侧 💰 查询': 'Not fetched yet — click 💰 on the right to fetch',
   '上次查询失败': 'last fetch failed',
-  'Credits 刷新已开始': 'Credits refresh started',
-  'Credits 刷新完成：': 'Credits refreshed: ',
-  '刷新 Credit 失败: ': 'Failed to refresh credits: ',
+  '网关累计消耗': 'Spent via gateway',
+  '余额刷新已开始': 'Balance refresh started',
+  '余额刷新完成：': 'Balance refreshed: ',
+  '刷新余额失败: ': 'Failed to refresh balance: ',
   '失败': 'failed',
+  // 一键去重
+  '一键去重': 'Deduplicate Accounts',
+  '已开始按账号身份去重，请稍候…': 'Deduplicating by account identity, please wait…',
+  '将按账号真实身份（uid）分组，保留每组第一个凭证并合并用量统计，删除其余重复凭证。确定继续？': 'Group accounts by real identity (uid), keep the first credential of each group and merge usage stats, then delete the rest. Continue?',
+  '一键去重失败: ': 'Deduplication failed: ',
+  '去重完成：删除 ': 'Deduplication done: removed ',
+  ' 个重复凭证，剩余 ': ' duplicate credential(s), ',
+  ' 个账号': ' account(s) left',
+  '未发现重复账号': 'No duplicate accounts found',
   '免费模型': 'Free models',
   '展开': 'Expand',
   '收起': 'Collapse',
@@ -1774,7 +1796,7 @@ async function loadAccounts() {
         '<td>' + fmtDateTime2(a.lastUsed) + '</td>' +
         '<td>' + fmtDateTime2(a.createdAt) + '</td>' +
         '<td style="white-space:nowrap">' + expander +
-          '<button class="btn btn-sm" onclick="refreshAccountCredit(\'' + a.accountId + '\',this)" title="' + t('查询 Credit') + '">💰</button> ' +
+          '<button class="btn btn-sm" onclick="refreshAccountCredit(\'' + a.accountId + '\',this)" title="' + t('查询余额') + '">💰</button> ' +
           '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\',this)" title="测试">⚡</button> ' +
           '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置">↻</button> ' +
           '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">✕</button>' +
@@ -1812,7 +1834,7 @@ async function loadAccounts() {
         '<div class="account-card-header"><span class="account-email">' + esc(a.email) + '</span>' +
         cardStatus + '</div>' +
         '<div class="account-metrics">' +
-          '<div class="account-metric"><span class="account-metric-label">' + t('Credit 余额') + '</span><span class="account-metric-value">' + formatCredit(a) + '</span></div>' +
+          '<div class="account-metric"><span class="account-metric-label">' + t('余额') + '</span><span class="account-metric-value">' + formatCredit(a) + '</span></div>' +
           '<div class="account-metric"><span class="account-metric-label">' + t('请求') + '</span><span class="account-metric-value">' + formatNumber(a.usageCount) + '</span></div>' +
           '<div class="account-metric"><span class="account-metric-label">' + t('总 Token') + '</span><span class="account-metric-value">' + formatTokenCount(a.totalTokens) + '</span></div>' +
           '<div class="account-metric"><span class="account-metric-label">' + t('缓存') + '</span><span class="account-metric-value">' + formatTokenCount(a.cachedTokens) + '</span></div>' +
@@ -1820,7 +1842,7 @@ async function loadAccounts() {
           '<div class="account-metric"><span class="account-metric-label">' + t('输出') + '</span><span class="account-metric-value">' + formatTokenCount(a.completionTokens) + '</span></div>' +
         '</div>' + modelHtml +
         '<div class="account-card-footer"><span>' + t('最后使用：') + lu + '</span><span class="account-card-actions">' +
-          '<button class="btn btn-sm" onclick="refreshAccountCredit(\'' + a.accountId + '\',this)" title="' + t('查询 Credit') + '">💰</button>' +
+          '<button class="btn btn-sm" onclick="refreshAccountCredit(\'' + a.accountId + '\',this)" title="' + t('查询余额') + '">💰</button>' +
           '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\',this)" title="测试">⚡</button>' +
           '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置">↻</button>' +
           '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">✕</button>' +
@@ -1831,26 +1853,27 @@ async function loadAccounts() {
   } catch (e) { toast(t('加载账号失败: ') + e.message, 'error'); }
 }
 
-// ========== Cline Credits 余额 ==========
-// 余额单位是 micro-USD（1e-6 美元）；Cline 自己的 UI 按 /1e4 显示成 credits，
-// 即 1 credit = $0.01。负值 = 账号已透支。
-const CREDITS_MICRO_USD_PER_CREDIT = 10000;
-
+// ========== Cline 账号余额与消耗 ==========
+// 余额单位 micro-USD（1e-6 美元），界面统一显示美元；负值 = 账号已透支。
+// 累计消耗来自网关响应的 usage.cost（美元）×1e6 逐笔累计。
 function formatCredit(a) {
   const bal = a.creditBalance;
   if (bal === null || bal === undefined) {
     return '<span style="color:var(--text3)" title="' + t('尚未查询，点击右侧 💰 查询') + '">—</span>';
   }
-  const credits = bal / CREDITS_MICRO_USD_PER_CREDIT;
   const usd = bal / 1000000;
-  const color = bal < 0 ? 'var(--red)' : (credits < 5 ? 'var(--yellow)' : 'var(--green)');
+  const color = bal < 0 ? 'var(--red)' : (usd < 0.1 ? 'var(--yellow)' : 'var(--green)');
   const err = a.creditError ? ' · ' + t('上次查询失败') : '';
-  return '<span class="mono" style="color:' + color + '" title="$' + usd.toFixed(4) + '（' + bal + ' micro-USD）' + err + '">' +
-    credits.toFixed(2) + ' cr</span>';
+  let html = '<span class="mono" style="color:' + color + '" title="$' + usd.toFixed(6) + '（' + bal + ' micro-USD）' + err + '">$' + usd.toFixed(4) + '</span>';
+  if (a.spentMicroUsd) {
+    html += '<div style="font-size:10px;color:var(--text3);line-height:1.2" title="' + t('网关累计消耗') + '">-$' + (a.spentMicroUsd / 1000000).toFixed(4) + '</div>';
+  }
+  return html;
 }
 
 let _creditAutoTried = false;
 let _creditPollTimer = null;
+let _dedupPollTimer = null;
 
 // 列表里存在从未查询过余额的账号时，自动触发一次全量刷新（每次页面加载只试一次）。
 function maybeAutoRefreshCredits(list) {
@@ -1861,46 +1884,101 @@ function maybeAutoRefreshCredits(list) {
   postCreditRefresh({}, null);
 }
 
-// 刷新全部账号 Credits（表头按钮）
+// 更多下拉菜单
+function toggleMoreMenu(ev) {
+  ev.stopPropagation();
+  const m = _('moreMenu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function() { const m = _('moreMenu'); if (m) m.style.display = 'none'; });
+
+// 刷新全部账号余额（更多菜单）
 async function refreshAllCredits(btn) {
+  _('moreMenu').style.display = 'none';
   await postCreditRefresh({}, btn);
 }
 
-// 刷新单个账号 Credits（行内 💰 按钮）
+// 一键去重（更多菜单）：按 Cline 账号 uid 判定重复，后台执行 + 轮询进度
+async function dedupAccounts(btn) {
+  _('moreMenu').style.display = 'none';
+  if (!confirm(t('将按账号真实身份（uid）分组，保留每组第一个凭证并合并用量统计，删除其余重复凭证。确定继续？'))) return;
+  if (btn) btn.classList.add('disabled');
+  try {
+    await api('POST', '/accounts/dedup');
+    toast(t('已开始按账号身份去重，请稍候…'), 'success');
+    pollDedupProgress();
+  } catch (e) {
+    toast(t('一键去重失败: ') + e.message, 'error');
+    if (btn) btn.classList.remove('disabled');
+  }
+}
+
+function pollDedupProgress() {
+  if (_dedupPollTimer) return;
+  const item = _('moreItemDedup');
+  const tick = async () => {
+    let d;
+    try { d = await api('GET', '/accounts/dedup'); }
+    catch (e) { clearInterval(_dedupPollTimer); _dedupPollTimer = null; if (item) item.classList.remove('disabled'); return; }
+    const p = (d && d.data && d.data.progress) || {};
+    if (p.running) {
+      if (item) { item.classList.add('disabled'); _('dedupMenuLabel').textContent = '⏳ ' + (p.done || 0) + '/' + (p.total || 0); }
+      return;
+    }
+    clearInterval(_dedupPollTimer);
+    _dedupPollTimer = null;
+    if (item) { item.classList.remove('disabled'); _('dedupMenuLabel').textContent = t('一键去重'); }
+    loadAccounts();
+    if (p.error) { toast(t('一键去重失败: ') + p.error, 'error'); return; }
+    if (p.removed > 0) {
+      toast(t('去重完成：删除 ') + p.removed + t(' 个重复凭证，剩余 ') + p.kept + t(' 个账号'), 'success');
+    } else {
+      toast(t('未发现重复账号'), 'success');
+    }
+    if (p.groups && p.groups.length) console.log('dedup groups', p.groups);
+  };
+  _dedupPollTimer = setInterval(tick, 1500);
+  tick();
+}
+
+// 刷新单个账号余额（行内 💰 按钮）
 async function refreshAccountCredit(id, btn) {
   await postCreditRefresh({ accountId: id }, btn);
 }
 
 async function postCreditRefresh(body, btn) {
-  if (btn) btn.disabled = true;
+  if (btn) btn.classList.add('disabled');
   try {
     await api('POST', '/accounts/credits/refresh', body);
-    toast(t('Credits 刷新已开始'), 'success');
+    toast(t('余额刷新已开始'), 'success');
     pollCreditProgress();
   } catch (e) {
-    toast(t('刷新 Credit 失败: ') + e.message, 'error');
-    if (btn) btn.disabled = false;
+    toast(t('刷新余额失败: ') + e.message, 'error');
+    if (btn) btn.classList.remove('disabled');
   }
 }
 
 // 轮询后台刷新进度，结束后重拉账号列表刷新余额列。
 function pollCreditProgress() {
   if (_creditPollTimer) return;
-  const btn = _('creditRefreshBtn');
+  const label = _('creditMenuLabel');
+  const item = _('moreItemCredit');
   const tick = async () => {
     let d;
     try { d = await api('GET', '/accounts/credits'); }
-    catch (e) { clearInterval(_creditPollTimer); _creditPollTimer = null; if (btn) btn.disabled = false; return; }
+    catch (e) { clearInterval(_creditPollTimer); _creditPollTimer = null; if (item) item.classList.remove('disabled'); return; }
     const p = (d && d.data && d.data.progress) || {};
     if (p.running) {
-      if (btn) btn.innerHTML = '⏳ ' + (p.done || 0) + '/' + (p.total || 0);
+      if (item) item.classList.add('disabled');
+      if (label) label.textContent = '⏳ ' + (p.done || 0) + '/' + (p.total || 0);
       return;
     }
     clearInterval(_creditPollTimer);
     _creditPollTimer = null;
-    if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' + t('刷新 Credit'); }
+    if (item) item.classList.remove('disabled');
+    if (label) label.textContent = t('刷新余额');
     loadAccounts();
-    if (p.total) toast(t('Credits 刷新完成：') + (p.succeeded || 0) + '/' + p.total + (p.failed ? ' · ' + t('失败') + ' ' + p.failed : ''), 'success');
+    if (p.total) toast(t('余额刷新完成：') + (p.succeeded || 0) + '/' + p.total + (p.failed ? ' · ' + t('失败') + ' ' + p.failed : ''), 'success');
   };
   _creditPollTimer = setInterval(tick, 1500);
   tick();

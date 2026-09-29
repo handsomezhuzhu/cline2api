@@ -71,6 +71,7 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/accounts/export", auth(handleExportAccounts))
 	mux.HandleFunc("/admin/api/accounts/credits", auth(handleAdminAccountCredits))
 	mux.HandleFunc("/admin/api/accounts/credits/refresh", auth(handleAdminCreditRefresh))
+	mux.HandleFunc("/admin/api/accounts/dedup", auth(handleAdminAccountDedup))
 	mux.HandleFunc("/admin/api/oauth/start", auth(handleOAuthStart))
 	mux.HandleFunc("/admin/api/oauth/status", auth(handleOAuthStatus))
 	mux.HandleFunc("/admin/api/sso/import", auth(handleSSOImport))
@@ -303,6 +304,27 @@ func handleAdminAccountCredits(w http.ResponseWriter, r *http.Request) {
 			"needRefresh": needCreditRefresh(),
 		},
 	})
+}
+
+// GET  /admin/api/accounts/dedup — 去重任务进度
+// POST /admin/api/accounts/dedup — 启动一键去重（后台异步，前端轮询进度）
+func handleAdminAccountDedup(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeAPI(w, http.StatusOK, apiResponse{
+			Success: true,
+			Data:    map[string]any{"progress": getAccountDedupProgress()},
+		})
+	case http.MethodPost:
+		prog, started := startAccountDedup()
+		writeAPI(w, http.StatusOK, apiResponse{
+			Success: true,
+			Message: tAPI(r, "dedup_started"),
+			Data:    map[string]any{"started": started, "progress": prog},
+		})
+	default:
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+	}
 }
 
 // POST /admin/api/accounts/credits/refresh  body: { accountId?: "" }

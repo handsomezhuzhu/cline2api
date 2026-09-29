@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -318,4 +321,136 @@ func needCreditRefresh() bool {
 		}
 	}
 	return false
+}
+
+// ========== 网关消耗捕获 ==========
+//
+// Cline 网关的响应（非流式 body / 流式最后一个 chunk）带 usage.cost 字段，
+// 单位美元，就是这笔请求计入账号 credits 的消耗：
+//
+//	"usage": { "prompt_tokens": 86, ..., "cost": 0.0002052,
+//	           "market_cost": 0.0002052, "gateway_cost": 0.0002052 }
+//
+// cost × 1e6 即 micro-USD，与 /users/{uid}/usages 流水的 creditsUsed 一致
+// （实测 0.0002052 → 205 micro-USD，响应侧有末位舍入）。免费模型该字段为 0。
+// inferenceCost / inputInferenceCost 等是上游推理成本，不收钱时也可能 >0，不能拿来计费。
+
+// costTailBytes 保留响应体尾部的字节数：usage 对象在两种响应形态里都位于末尾，
+// 64KB 足以覆盖最长的最后一个 SSE chunk（含 routing 元信息）。
+const costTailBytes = 64 * 1024
+
+// costCaptureReader 包装上游响应体：边转发边保留尾部字节，读取结束（EOF 或
+// 提前 Close）时解析 usage.cost 并通过 onCost 回调上报（只上报一次）。
+type costCaptureReader struct {
+	src    io.ReadCloser
+	onCost func(costUsd float64)
+
+	tail   []byte // 最近 costTailBytes 字节
+	once   sync.Once
+	closed bool
+}
+
+func newCostCaptureReader(src io.ReadCloser, onCost func(float64)) *costCaptureReader {
+	return &costCaptureReader{src: src, onCost: onCost}
+}
+
+func (r *costCaptureReader) Read(p []byte) (int, error) {
+	n, err := r.src.Read(p)
+	if n > 0 {
+		r.tail = append(r.tail, p[:n]...)
+		if len(r.tail) > costTailBytes {
+			r.tail = r.tail[len(r.tail)-costTailBytes:]
+		}
+	}
+	if err == io.EOF {
+		r.flush()
+	}
+	return n, err
+}
+
+func (r *costCaptureReader) Close() error {
+	r.flush()
+	return r.src.Close()
+}
+
+// flush 解析尾部并上报消耗；sync.Once 保证 EOF/Close 只触发一次。
+func (r *costCaptureReader) flush() {
+	r.once.Do(func() {
+		if cost, ok := extractUsageCost(r.tail); ok {
+			r.onCost(cost)
+		}
+	})
+}
+
+// extractUsageCost 从响应体尾部解析最后一个 usage 对象里的 cost 字段。
+// 兼容非流式（{"data":{...,"usage":{...}}}）与流式（data: {...,"usage":{...}}）。
+func extractUsageCost(tail []byte) (float64, bool) {
+	idx := bytes.LastIndex(tail, []byte(`"usage"`))
+	if idx < 0 {
+		return 0, false
+	}
+	// 定位 "usage" 后的 {
+	rel := bytes.IndexByte(tail[idx:], '{')
+	if rel < 0 {
+		return 0, false
+	}
+	start := idx + rel
+	// 花括号配平找到 usage 对象结尾（跳过字符串字面量内的括号）
+	depth, inStr, esc, end := 0, false, false, -1
+	for j := start; j < len(tail); j++ {
+		c := tail[j]
+		if inStr {
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end = j + 1
+			}
+		}
+		if end > 0 {
+			break
+		}
+	}
+	if end < 0 {
+		return 0, false
+	}
+	var u struct {
+		Cost *float64 `json:"cost"`
+	}
+	if err := json.Unmarshal(tail[start:end], &u); err != nil || u.Cost == nil {
+		return 0, false
+	}
+	return *u.Cost, true
+}
+
+// recordAccountSpend 把一笔请求的消耗（美元）累计到账号上并落盘。
+// cost<=0（免费模型/解析不到）不计。
+func recordAccountSpend(acc *Account, costUsd float64) {
+	if acc == nil || costUsd <= 0 {
+		return
+	}
+	micro := int64(math.Round(costUsd * 1e6))
+	if micro <= 0 {
+		return
+	}
+	poolMu.Lock()
+	acc.SpentMicroUsd += micro
+	acc.SpendCount++
+	acc.LastSpendAt = time.Now()
+	savePoolLocked()
+	poolMu.Unlock()
 }

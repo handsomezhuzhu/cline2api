@@ -117,6 +117,10 @@ var apiMessages = map[string]map[locale]string{
 		localeZH: "全部 Token 已刷新",
 		localeEN: "All tokens refreshed",
 	},
+	"dedup_started": {
+		localeZH: "已开始按账号身份去重，请稍候…",
+		localeEN: "Deduplication by account identity started, please wait…",
+	},
 	"accounts_deleted": {
 		localeZH: "全部账号已删除",
 		localeEN: "All accounts deleted",

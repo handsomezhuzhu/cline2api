@@ -30,6 +30,12 @@ type Account struct {
 	CreditCheckedAt time.Time `json:"creditCheckedAt,omitempty"`
 	// CreditError 最近一次查询 Credits 的失败原因（空 = 上次成功）
 	CreditError string `json:"creditError,omitempty"`
+	// SpentMicroUsd 网关转发时从响应 usage.cost 累计的消耗（micro-USD，1e-6 美元）
+	SpentMicroUsd int64 `json:"spentMicroUsd,omitempty"`
+	// SpendCount 产生过消耗（cost>0）的请求数
+	SpendCount int64 `json:"spendCount,omitempty"`
+	// LastSpendAt 最近一次产生消耗的时间
+	LastSpendAt time.Time `json:"lastSpendAt,omitempty"`
 }
 
 type Model struct {

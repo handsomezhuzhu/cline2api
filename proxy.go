@@ -1370,6 +1370,12 @@ func callClineAPIWithAccountCtx(ctx context.Context, acc *Account, params map[st
 		return nil, acc, &clineAPIError{statusCode: resp.StatusCode, message: truncate(bodyStr, 500)}
 	}
 
+	// 包装响应体：转发过程中捕获 usage.cost（这笔请求的 credit 消耗），
+	// 读取结束（EOF 或客户端提前关闭）时累计到账号的 SpentMicroUsd。
+	resp.Body = newCostCaptureReader(resp.Body, func(costUsd float64) {
+		recordAccountSpend(acc, costUsd)
+	})
+
 	touchAccountUsed(acc)
 	return resp, acc, nil
 }
