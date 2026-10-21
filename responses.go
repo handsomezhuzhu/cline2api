@@ -574,7 +574,10 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, chatToResponses(out2))
 
 	default: // cline
-		upResp, acc, err := callClineAPI(chat, isStream)
+		// vmc 模型的非流式请求在 Cline 网关侧是坏的（500 model 'invalid'），
+		// 内部改走流式再聚合；流式请求不受影响。
+		viaStreamAgg := !isStream && isVmcModel(model)
+		upResp, acc, err := callClineAPI(chat, isStream || viaStreamAgg)
 		if effectiveModel, ok := chat["model"].(string); ok && effectiveModel != "" {
 			reqLog.Model = effectiveModel // 含回退后的实际服务模型
 		}
@@ -602,18 +605,34 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 			chatStreamToResponses(w, upResp, &reqLog, acc)
 			return
 		}
-		var raw map[string]any
-		if err := json.NewDecoder(upResp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
-			writeJSON(w, http.StatusInternalServerError, map[string]any{
-				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
-			})
-			return
+		var out2 map[string]any
+		if viaStreamAgg {
+			agg, _, aggErr := aggregateSSEToCompletion(upResp.Body)
+			if aggErr != nil {
+				finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "aggregate stream: "+aggErr.Error())
+				writeJSON(w, http.StatusBadGateway, map[string]any{
+					"error": map[string]string{"message": aggErr.Error(), "type": "api_error"},
+				})
+				return
+			}
+			out2 = normalizeOpenAIResponse(agg)
+		} else {
+			var raw map[string]any
+			if err := json.NewDecoder(upResp.Body).Decode(&raw); err != nil {
+				finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+				writeJSON(w, http.StatusInternalServerError, map[string]any{
+					"error": map[string]string{"message": err.Error(), "type": "parse_error"},
+				})
+				return
+			}
+			out2 = normalizeOpenAIResponse(unwrapDataEnvelope(raw))
 		}
-		out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
 		usage := parseTokenUsage(out2["usage"])
 		if acc != nil {
 			recordTokenUsage(acc, reqLog.Model, usage)
+		}
+		if c, ok := capturedResponseCost(upResp); ok {
+			reqLog.CostUsd = c
 		}
 		finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 		writeJSON(w, http.StatusOK, chatToResponses(out2))

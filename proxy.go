@@ -552,7 +552,10 @@ func startProxy(host string, port int) error {
 			return
 		}
 
-		resp, acc, err := callClineAPI(params, isStream)
+		// vmc 模型的非流式请求在 Cline 网关侧是坏的（500 model 'invalid' from
+		// Vercel），内部改走流式再聚合；流式请求不受影响。
+		viaStreamAgg := !isStream && isVmcModel(model)
+		resp, acc, err := callClineAPI(params, isStream || viaStreamAgg)
 		if effectiveModel, ok := params["model"].(string); ok && effectiveModel != "" {
 			reqLog.Model = effectiveModel // 含回退后的实际服务模型
 		}
@@ -573,6 +576,8 @@ func startProxy(host string, port int) error {
 
 		if isStream {
 			handleStreamResponse(w, resp, acc, &reqLog)
+		} else if viaStreamAgg {
+			handleNonStreamViaStream(w, resp, acc, &reqLog)
 		} else {
 			handleNonStreamResponse(w, resp, acc, &reqLog)
 		}
@@ -1855,6 +1860,13 @@ func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response, acc
 		}
 	}
 
+	completeNonStream(w, out, acc, reqLog, upstream)
+}
+
+// completeNonStream 非流式响应的公共收尾：归一化、用量记账、消耗回填、
+// 请求日志落盘、写回客户端。handleNonStreamResponse（直连）与
+// handleNonStreamViaStream（vmc 内部转流式聚合）共用。
+func completeNonStream(w http.ResponseWriter, out map[string]any, acc *Account, reqLog *RequestLog, upstream *http.Response) {
 	out = normalizeOpenAIResponse(out)
 	usage := parseTokenUsage(out["usage"])
 	recordTokenUsage(acc, reqLog.Model, usage)
@@ -2426,9 +2438,12 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, acc, err := callClineAPI(openAIReq, req.Stream)
+	// vmc 模型的非流式请求在 Cline 网关侧是坏的（500 model 'invalid' from
+	// Vercel），内部改走流式再聚合；流式请求不受影响。
+	viaStreamAgg := !req.Stream && isVmcModel(req.Model)
+	resp, acc, err := callClineAPI(openAIReq, req.Stream || viaStreamAgg)
 	if effectiveModel, ok := openAIReq["model"].(string); ok && effectiveModel != "" {
-		reqLog.Model = effectiveModel // 含回退后的实际服务模型
+		reqLog.Model = effectiveModel
 	}
 	stampUpstream(&reqLog, openAIReq) // 归因实际服务方（provider / opencode / cline）
 	if err != nil {
@@ -2443,6 +2458,19 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	if acc != nil {
 		reqLog.AccountID = acc.AccountID
 		reqLog.AccountEmail = acc.Email
+	}
+
+	if viaStreamAgg {
+		out, _, aggErr := aggregateSSEToCompletion(resp.Body)
+		if aggErr != nil {
+			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "aggregate stream: "+aggErr.Error())
+			writeJSON(w, http.StatusBadGateway, map[string]any{
+				"error": map[string]string{"message": aggErr.Error(), "type": "api_error"},
+			})
+			return
+		}
+		completeAnthropicNonStream(w, out, acc, &reqLog, resp)
+		return
 	}
 
 	{
@@ -2460,18 +2488,27 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 				out = d
 			}
 		}
-		out = normalizeOpenAIResponse(out)
-		usage := parseTokenUsage(out["usage"])
-		recordTokenUsage(acc, reqLog.Model, usage)
-		finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
-		anthropicResp := openAIToAnthropic(out)
-
-		if hasToolUseBlocks(anthropicResp["content"]) {
-			anthropicResp["stop_reason"] = "tool_use"
-		}
-
-		writeJSON(w, http.StatusOK, anthropicResp)
+		completeAnthropicNonStream(w, out, acc, &reqLog, resp)
 	}
+}
+
+// completeAnthropicNonStream Anthropic 非流式响应的公共收尾：归一化、用量记账、
+// 消耗回填、请求日志落盘、转 Anthropic 协议写回。直连与 vmc 转流式聚合共用。
+func completeAnthropicNonStream(w http.ResponseWriter, out map[string]any, acc *Account, reqLog *RequestLog, upstream *http.Response) {
+	out = normalizeOpenAIResponse(out)
+	usage := parseTokenUsage(out["usage"])
+	recordTokenUsage(acc, reqLog.Model, usage)
+	if c, ok := capturedResponseCost(upstream); ok {
+		reqLog.CostUsd = c
+	}
+	finalizeRequestLog(reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+	anthropicResp := openAIToAnthropic(out)
+
+	if hasToolUseBlocks(anthropicResp["content"]) {
+		anthropicResp["stop_reason"] = "tool_use"
+	}
+
+	writeJSON(w, http.StatusOK, anthropicResp)
 }
 
 // maxStreamAttempts 预提交失败的最大尝试次数（含首次）。实际次数还会被降级链长度限制：

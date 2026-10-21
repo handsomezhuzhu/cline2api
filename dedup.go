@@ -27,16 +27,16 @@ type dedupGroup struct {
 
 // dedupProgress 是去重任务的状态（供前端轮询）。
 type dedupProgress struct {
-	Running   bool          `json:"running"`
-	Total     int           `json:"total"`
-	Done      int           `json:"done"`
-	Removed   int           `json:"removed"`
-	Kept      int           `json:"kept"`
+	Running    bool         `json:"running"`
+	Total      int          `json:"total"`
+	Done       int          `json:"done"`
+	Removed    int          `json:"removed"`
+	Kept       int          `json:"kept"`
 	Unresolved int          `json:"unresolved"`
-	Groups    []dedupGroup  `json:"groups,omitempty"`
-	StartedAt time.Time     `json:"startedAt,omitempty"`
+	Groups     []dedupGroup `json:"groups,omitempty"`
+	StartedAt  time.Time    `json:"startedAt,omitempty"`
 	FinishedAt time.Time    `json:"finishedAt,omitempty"`
-	Error     string        `json:"error,omitempty"`
+	Error      string       `json:"error,omitempty"`
 }
 
 var (
@@ -89,10 +89,10 @@ func runAccountDedup(targets []*Account) {
 	}
 	results := make([]resolved, len(targets))
 	var (
-		wg      sync.WaitGroup
-		mu      sync.Mutex
-		done    int
-		failed  int
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		done   int
+		failed int
 	)
 	sem := make(chan struct{}, creditRefreshConcurrency)
 	for i, acc := range targets {
@@ -134,7 +134,7 @@ func runAccountDedup(targets []*Account) {
 
 	// 3) 每组保留第一个，其余删除并合并统计
 	var (
-		groups []dedupGroup
+		groups  []dedupGroup
 		removed int
 	)
 	for _, uid := range order {
