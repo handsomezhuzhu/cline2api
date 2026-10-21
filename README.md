@@ -4,7 +4,7 @@
 
 Cline API 反向代理 · 多账号轮询 · 双协议兼容 · 桌面端
 
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.27.3-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](#构建)
 
@@ -217,7 +217,7 @@ git push origin v1.0.0
 
 ## 技术栈
 
-- [Go 1.25](https://go.dev) — 后端、代理、桌面壳
+- [Go 1.27.3](https://go.dev) — 后端、代理、桌面壳
 - [Wails v2](https://wails.io) — 跨平台桌面 WebView（单文件，非 Electron）
 - [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) / [WebKit](https://webkit.org) / [WebKitGTK](https://webkitgtk.org) — 各平台原生 WebView
 

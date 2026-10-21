@@ -4,7 +4,7 @@
 
 Cline API reverse proxy · multi-account rotation · dual protocol · desktop app
 
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.27.3-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](#build)
 
@@ -212,7 +212,7 @@ Files are looked up in this order: executable directory → working directory �
 
 ## Tech Stack
 
-- [Go 1.25](https://go.dev) — backend, proxy, desktop shell
+- [Go 1.27.3](https://go.dev) — backend, proxy, desktop shell
 - [Wails v2](https://wails.io) — cross-platform desktop WebView (single file, not Electron)
 - [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) / [WebKit](https://webkit.org) / [WebKitGTK](https://webkitgtk.org) — native WebView per platform
 
